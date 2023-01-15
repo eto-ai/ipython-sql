@@ -13,6 +13,7 @@ from IPython.core.magic_arguments import argument, magic_arguments, parse_argstr
 from IPython.display import display_javascript
 from sqlalchemy.exc import OperationalError, ProgrammingError, DatabaseError
 
+import sql
 import sql.connection
 import sql.parse
 import sql.run
@@ -60,14 +61,14 @@ class SqlMagic(Magics, Configurable):
         help="Automatically limit the number of rows displayed (full result set is still stored)",
     )
     autopandas = Bool(
-        False,
+        True,
         config=True,
         help="Return Pandas DataFrames instead of regular result sets",
     )
     column_local_vars = Bool(
         False, config=True, help="Return data into local variables from column names"
     )
-    feedback = Bool(True, config=True, help="Print number of rows affected by DML")
+    feedback = Bool(False, config=True, help="Print number of rows affected by DML")
     dsn_filename = Unicode(
         "odbc.ini",
         config=True,
@@ -121,6 +122,11 @@ class SqlMagic(Magics, Configurable):
         help="specify dictionary of connection arguments to pass to SQL driver",
     )
     @argument("-f", "--file", type=str, help="Run SQL from file at this path")
+    @argument(
+        "--lance",
+        action="store_true",
+        help="turn on the lance hack",
+    )
     def execute(self, line="", cell="", local_ns={}):
         """Runs SQL statement against a database, specified by SQLAlchemy connect string.
 
@@ -147,6 +153,7 @@ class SqlMagic(Magics, Configurable):
 
         """
         # Parse variables (words wrapped in {}) for %%sql magic (for %sql this is done automatically)
+        import sql
         cell = self.shell.var_expand(cell)
         line = sql.parse.without_sql_comment(parser=self.execute.parser, line=line)
         args = parse_argstring(self.execute, line)
@@ -212,7 +219,12 @@ class SqlMagic(Magics, Configurable):
             return
 
         try:
+            import time
+            start = time.time()
             result = sql.run.run(conn, parsed["sql"], self, user_ns)
+            end = time.time()
+            duration = end - start
+            print(f"Took {duration}")
 
             if (
                 result is not None
@@ -237,14 +249,15 @@ class SqlMagic(Magics, Configurable):
 
                 return None
             else:
-
+                result_var = "sql_result_set"
                 if parsed["result_var"]:
                     result_var = parsed["result_var"]
-                    print("Returning data to local variable {}".format(result_var))
-                    self.shell.user_ns.update({result_var: result})
-                    return None
 
-                # Return results into the default ipython _ variable
+                if args.lance:
+                    import sql.lance
+
+                    result = sql.lance.ResultSet(result, result_var)
+                self.shell.user_ns.update({result_var: result})
                 return result
 
         # JA: added DatabaseError for MySQL
@@ -291,4 +304,15 @@ def load_ipython_extension(ip):
 
     # js = "IPython.CodeCell.config_defaults.highlight_modes['magic_sql'] = {'reg':[/^%%sql/]};"
     # display_javascript(js, raw=True)
+    js = """
+            debugger;
+            let codeCell = (window.Jupyter ?? window.IPython)?.CodeCell;
+            if (codeCell) {
+                let highlightModes = (codeCell.options_default ?? codeCell.config_defaults).highlight_modes;
+                if (!highlightModes['magic_sql'])
+                    highlightModes['magic_sql'] = {'reg': []};
+                highlightModes['magic_sql']['reg'].push(/^%%sql/);
+            }
+        """
+    display_javascript(js, raw=True)
     ip.register_magics(SqlMagic)

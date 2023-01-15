@@ -13,6 +13,8 @@ version = "0.4.1"
 install_requires = [
     "prettytable<1",
     "ipython>=1.0",
+    "jinja2",
+    "markupsafe",
     "sqlalchemy>=0.6.7",
     "sqlparse",
     "six",

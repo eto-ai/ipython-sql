@@ -37,6 +37,7 @@ class Connection(object):
 
     def __init__(self, connect_str=None, connect_args={}, creator=None):
         try:
+            print(connect_args)
             if creator:
                 engine = sqlalchemy.create_engine(
                     connect_str, connect_args=connect_args, creator=creator
@@ -71,7 +72,8 @@ class Connection(object):
 
             if cls.connections:
                 if displaycon:
-                    print(cls.connection_list())
+                    # print(cls.connection_list())
+                    pass
             else:
                 if os.getenv("DATABASE_URL"):
                     cls.current = Connection(
@@ -101,7 +103,7 @@ class Connection(object):
                 template = "   {}"
             result.append(template.format(engine_url.__repr__()))
         return "\n".join(result)
-    
+
     @classmethod
     def _close(cls, descriptor):
         if isinstance(descriptor, Connection):
